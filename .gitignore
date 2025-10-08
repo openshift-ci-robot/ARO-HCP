@@ -28,3 +28,7 @@ timing.yaml
 .graph.svg
 .tool-versions
 resourcegroups
+local/
+
+# Development guide (agent-specific)
+CRUSH.md
