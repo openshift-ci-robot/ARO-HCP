@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -144,6 +145,56 @@ func CreateBicepTemplateAndWait(
 		fmt.Printf("#### unknown type %T: content=%v", m, spew.Sdump(m))
 		return nil, fmt.Errorf("unknown type %T", m)
 	}
+}
+
+// CreateBicepTemplate creates a Bicep template deployment in the specified resource group without waiting for completion.
+func CreateBicepTemplate(
+	ctx context.Context,
+	deploymentsClient *armresources.DeploymentsClient,
+	resourceGroupName string,
+	deploymentName string,
+	bicepTemplateJSON []byte,
+	parameters map[string]interface{},
+) (*http.Response, error) {
+
+	bicepParameters := map[string]interface{}{}
+	for k, v := range parameters {
+		bicepParameters[k] = map[string]interface{}{
+			"value": v,
+		}
+	}
+
+	// TODO deads2k: couldn't work out why, but for some reason this works when passed as a map, not when sending json. My guess is newlines.
+	bicepTemplateMap := map[string]interface{}{}
+	if err := json.Unmarshal(bicepTemplateJSON, &bicepTemplateMap); err != nil {
+		panic(err)
+	}
+
+	deploymentProperties := armresources.Deployment{
+		Properties: &armresources.DeploymentProperties{
+			DebugSetting: &armresources.DebugSetting{DetailLevel: to.Ptr("requestContent")},
+			Template:     bicepTemplateMap,
+			Parameters:   bicepParameters,
+			Mode:         to.Ptr(armresources.DeploymentModeIncremental), // or Complete
+		},
+	}
+
+	pollerResp, err := deploymentsClient.BeginCreateOrUpdate(
+		ctx,
+		resourceGroupName,
+		deploymentName,
+		deploymentProperties,
+		nil,
+	)
+	time.Sleep(3 * time.Minute)
+	if err != nil {
+		return nil, fmt.Errorf("failed creating deployment %q in resourcegroup=%q: %w", deploymentName, resourceGroupName, err)
+	}
+	operationResult, err := pollerResp.Poll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed waiting for deployment %q in resourcegroup=%q to finish: %w", deploymentName, resourceGroupName, err)
+	}
+	return operationResult, nil
 }
 
 func ListAllDeployments(
