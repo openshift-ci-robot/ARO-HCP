@@ -5,7 +5,10 @@ metadata:
   namespace: '{{ .Release.Namespace }}'
 spec:
   ttlSecondsAfterFinished: 300
+  # Limit the job's maximum execution time to 30 minutes.
   activeDeadlineSeconds: 1800
+  # Retries use exponential backoff (starting at 10s, then 20s, 40s, etc.), with a maximum wait time of six minutes between each retry.
+  # The job will be retried up to 50 times if it fails.
   backoffLimit: 50
   template:
     spec:
@@ -26,7 +29,7 @@ spec:
               local EXPECTED_TAG="$1"
               local NAMESPACE="{{ .Release.Namespace }}"
               
-              # Verifying all running pods have the same image version
+              echo "Verifying all running pods have the same image version"
               IMAGES=$(kubectl get pods -l app=clusters-service --namespace="$NAMESPACE" -o jsonpath='{range .items[*]}{.spec.containers[?(@.name=="service")].image}{"\n"}{end}' | sort | uniq)
               IMAGE_COUNT=$(echo "$IMAGES" | wc -l)
               if [ "$IMAGE_COUNT" -ne 1 ]; then
@@ -35,7 +38,7 @@ spec:
                 exit 1
               fi
               
-              # Verifying image tag is the expected one
+              echo "Verifying image tag is the expected one"
               DEPLOYMENT_IMAGE=$(kubectl get deployment clusters-service --namespace="$NAMESPACE" -o jsonpath='{.spec.template.spec.containers[?(@.name=="service")].image}')
               if [ "${DEPLOYMENT_IMAGE##*@}" != "$EXPECTED_TAG" ]; then
                 echo "Error: Deployment is using the wrong image tag"
@@ -43,7 +46,7 @@ spec:
                 exit 1
               fi
 
-              # Check if all pods also have the correct tag
+              echo "Checking if all pods also have the correct tag"
               POD_IMAGES=$(kubectl get pods -l app=clusters-service --namespace="$NAMESPACE" -o jsonpath='{range .items[*]}{.spec.containers[?(@.name=="service")].image}{"\n"}{end}' | sort | uniq)
               # Verifying all pods use the expected tag
               for image in $POD_IMAGES; do
@@ -53,7 +56,7 @@ spec:
                 fi
               done
               
-              # Check if all pods are ready and running
+              echo "Checking if all pods are ready and running"
               if ! kubectl wait --for=condition=ready pod -l app=clusters-service --namespace="$NAMESPACE" --timeout=60s; then
                 echo "Error: Not all pods are ready"
                 echo "Current pod statuses:"
@@ -66,15 +69,17 @@ spec:
             
             echo "Starting execution..."
             
-            # Wait for clusters-service deployment rollout to complete
+            echo "Waiting for clusters-service deployment rollout to complete"
             kubectl rollout status deployment/clusters-service --namespace="{{ .Release.Namespace }}" --timeout=600s
-            
+            echo "Clusters-service deployment rollout completed"
+
             # Set the expected image tag
             EXPECTED_IMAGE_TAG={{ .Values.global.imageDigest | default .Values.imageDigest }}
             
             checkImageTag "$EXPECTED_IMAGE_TAG"
             
             # Run your arbitrary commands below
+            echo "Running arbitrary commands..."
             /bin/bash /scripts/arbitrary-commands.sh
 
             echo "\n\nExecution completed successfully"

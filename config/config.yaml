@@ -1116,7 +1116,6 @@ clouds:
             tracing:
               address: "http://ingest.observability:4318"
               exporter: "otlp"
-            deployDebugJob: true
           # Geneva
           geneva:
             logs:
